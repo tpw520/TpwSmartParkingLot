@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <link rel="stylesheet" href="../lib/layui-v2.6.3/css/layui.css" media="all">
+    <script src="../lib/layui-v2.6.3/layui.js" charset="utf-8"></script>
+    <script src="../lib/jquery-3.4.1/jquery-3.4.1.min.js" charset="utf-8"></script>
+
+</head>
+<body>
+<!--车牌识别-->
+<fieldset class="table-search-fieldset"  >
+    <legend style="color: #2D8CF0">图片上传识别</legend>
+    <form action="/imageRecognition1" method="post" enctype="multipart/form-data" style="text-align: center" id="formImage">
+        <label style="color: #2D8CF0;font-size: 18px">选择要停放的车场&nbsp&nbsp&nbsp</label>
+        <select name="parkingName" style="font-size: 17px ;width: 120px" id="channel" class="classify" >
+        </select>
+        <input type="file" name="fileName" >
+        <input type="submit" value="文件上传"  class="layui-btn layui-btn-normal layui-btn-radius" style="height: 24px;line-height: 25px"></input>
+        <h1>[[${PlateMsg}]]</h1>
+    </form>
+</fieldset>
+<!--<script>-->
+<!--    function ImagePlate(){-->
+<!--        // var params = {-->
+<!--        //     parkingName: $('#channel').val(),-->
+<!--        //     fileName: $('#fileName').val(),-->
+<!--        // }-->
+<!--        console.info($('#channel').val());-->
+<!--        console.info($('#fileName1').val());-->
+<!--        $.ajax({-->
+<!--            type: "post",-->
+<!--            url: "/imageRecognition1",-->
+<!--            data: {-->
+<!--                parkingName: $('#channel').val(),-->
+<!--                fileName: $('#fileName1').val(),-->
+<!--            },-->
+<!--            contentType:'multipart/form-data; boundary=&#45;&#45;&#45;&#45;WebKitFormBoundary7d51v6Kian18EwDT' ,-->
+<!--            success: function (res) {-->
+<!--                layer.alert(res)-->
+<!--            },-->
+<!--            error:function (){-->
+<!--                layer.alert("上传出错")-->
+<!--            }-->
+<!--        })-->
+<!--    }-->
+<!--</script>-->
+
+<div style="text-align: center">
+    <center><h2>摄像头拍照识别</h2></center>
+    <h2 style="color: #ee675c;">[[${ErrorMsg}]]</h2>
+    <video id="video" width="512" height="384" autoplay="autoplay"></video>
+    <canvas id="canvas" width="512" height="384"></canvas>
+    <!--拍照按钮-->
+    <div style="text-align: center">
+        <button id="opencapture" class="layui-btn layui-btn-normal layui-btn-radius" onclick="getMedia()">开启摄像头</button>
+        <button class="layui-btn layui-btn-normal layui-btn-radius" id="capture">拍照上传</button>
+        <button class="layui-btn layui-btn-normal layui-btn-radius" onclick="stopStreamedVideo(video)">关闭摄像头</button>
+    </div>
+    <div>
+        <img id="img">
+    </div>
+
+</div>
+
+<script>
+    $("#province").empty();
+    //获取数据
+    $.ajax({
+        type: "GET",
+        url: "/carNameSelect",
+        dataType: "json",
+        success: function (res) {
+            for (var key in res) {
+                $("#channel").append("<option value='" + res[key] + "'>" + res[key] + "</option>");
+            }
+        }
+    });
+</script>
+
+<script>
+    let video = document.getElementById("video");
+    let canvas = document.getElementById("canvas");
+    let context = canvas.getContext("2d");
+
+    // 老的浏览器可能根本没有实现 mediaDevices，所以我们可以先设置一个空的对象
+    if (navigator.mediaDevices === undefined) {
+        navigator.mediaDevices = {};
+    }
+
+    // 一些浏览器部分支持 mediaDevices。我们不能直接给对象设置 getUserMedia
+    // 因为这样可能会覆盖已有的属性。这里我们只会在没有getUserMedia属性的时候添加它。
+    if (navigator.mediaDevices.getUserMedia === undefined) {
+        navigator.mediaDevices.getUserMedia = function (constraints) {
+
+            // 首先，如果有getUserMedia的话，就获得它
+            var getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+
+            // 一些浏览器根本没实现它 - 那么就返回一个error到promise的reject来保持一个统一的接口
+            if (!getUserMedia) {
+                return Promise.reject(new Error('getUserMedia is not implemented in this browser'));
+            }
+
+            // 否则，为老的navigator.getUserMedia方法包裹一个Promise
+            return new Promise(function (resolve, reject) {
+                getUserMedia.call(navigator, constraints, resolve, reject);
+            });
+        }
+    }
+    //MediaStream.getTracks()[1].stop();
+    //默认使用前摄像头，强制使用后置摄像头如下设置
+    // let constraints = {video: { facingMode: { exact: "environment" } }};
+    function getMedia() {
+        let constraints = {video: true};
+        navigator.mediaDevices.getUserMedia(constraints)
+            .then(function (stream) {
+                // 旧的浏览器可能没有srcObject
+                if ("srcObject" in video) {
+                    video.srcObject = stream;
+                } else {
+                    // 防止在新的浏览器里使用它，应为它已经不再支持了
+                    video.src = window.URL.createObjectURL(stream);
+                }
+                video.onloadedmetadata = function (e) {
+                    video.play();
+                };
+            })
+            .catch(function (err) {
+                console.log(err.name + ": " + err.message);
+            });
+    }
+
+    //关闭摄像头 vidoeElem为video的id
+    function stopStreamedVideo(videoElem) {
+        const stream = videoElem.srcObject;
+        const tracks = stream.getTracks();
+
+        tracks.forEach(function (track) {
+            track.stop();
+        });
+
+        videoElem.srcObject = null;
+    }
+
+    //注册拍照按钮的单击事件
+    document.getElementById("capture").addEventListener("click", function () {
+        //绘制画面
+        context.drawImage(video, 0, 0, 512, 384);
+        let file = canvas.toDataURL();
+        var formData = new FormData();
+        let blob = dataURLtoFile(file, 'image/jpg');
+
+        let fileOfBlob = new File([blob], new Date() + '.jpg');
+        //获取选择标签的值
+        let channel = document.getElementById("channel");
+        let ParkingName = channel.value;
+        let Photograph = "Photograph";
+        console.log(ParkingName);
+        formData.append('fileName', fileOfBlob);
+        formData.append('parkingName', ParkingName);
+        formData.append('Photograph', Photograph);
+        $.ajax({
+            type: "post",
+            url: "/imageRecognition",
+            data: formData,
+            async: false,
+            cache: false,   // 不缓存
+            processData: false,   // jQuery不要去处理发送的数据
+            contentType: false,   // jQuery不要去设置Content-Type请求头
+            success: function (res) {
+                layer.alert(res);
+            },
+            error: function () {
+                layer.alert("上传出错");
+            }
+        });
+
+    });
+
+    function dataURLtoFile(dataURI, type) {
+        let binary = atob(dataURI.split(',')[1]);
+        let array = [];
+        for (let i = 0; i < binary.length; i++) {
+            array.push(binary.charCodeAt(i));
+        }
+        return new Blob([new Uint8Array(array)], {type: type});
+    }
+
+</script>
+</body>
+
+</html>
